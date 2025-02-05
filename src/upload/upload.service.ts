@@ -1,25 +1,23 @@
-import { Injectable } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
-import { Express } from 'express';
+import { Injectable, BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class UploadService {
-  private readonly uploadPath = path.join(__dirname, '../../uploads');
+  private readonly allowedTypes = ['image/jpeg', 'image/png', 'application/pdf']; // Updated allowed types
+  private readonly maxSize = 5 * 1024 * 1024; // 5 MB
 
-  constructor() {
-    if (!fs.existsSync(this.uploadPath)) {
-      fs.mkdirSync(this.uploadPath, { recursive: true });
-    }
+  handleUpload(file: Express.Multer.File) {
+    this.validateFile(file);
+    // Additional logic such as saving file details to a database can be added here
+    return { message: 'File uploaded successfully!', file };
   }
 
-  async saveFile(file: Express.Multer.File) {
-    try {
-      const filePath = path.join(this.uploadPath, file.originalname);
-      fs.writeFileSync(filePath, file.buffer);
-      return { message: 'File uploaded successfully', fileName: file.originalname };
-    } catch (error) {
-      throw new Error('Failed to save the file');
+  private validateFile(file: Express.Multer.File) {
+    if (!this.allowedTypes.includes(file.mimetype)) {
+      throw new BadRequestException(`Unsupported file type: ${file.mimetype}`);
+    }
+
+    if (file.size > this.maxSize) {
+      throw new BadRequestException(`File size exceeds the limit of ${this.maxSize / (1024 * 1024)} MB`);
     }
   }
 }

@@ -1,32 +1,44 @@
-import { Controller, Post, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Post, UploadedFile, UseInterceptors, BadRequestException, Catch, ExceptionFilter, ArgumentsHost, Get, Param, Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadService } from './upload.service';
-import { Express } from 'express';
-import * as multer from 'multer';
+import { Response } from 'express';
+import * as path from 'path';
+import * as fs from 'fs';
 
 @Controller('upload')
-export class UploadController {
+@Catch(BadRequestException)
+export class UploadController implements ExceptionFilter {
   constructor(private readonly uploadService: UploadService) {}
 
-  @Post('file')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
-      fileFilter: (req, file, callback) => {
-        const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-        if (allowedTypes.includes(file.mimetype)) {
-          callback(null, true);
-        } else {
-          callback(new Error('Invalid file type'), false);
-        }
-      },
-    }),
-  )
-  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+  @Post()
+  @UseInterceptors(FileInterceptor('file'))
+  uploadFile(@UploadedFile() file: Express.Multer.File) {
     try {
-      return await this.uploadService.saveFile(file);
+      return this.uploadService.handleUpload(file);
     } catch (error) {
-      throw new BadRequestException(error.message || 'File upload failed');
+      return { error: error.message };
     }
+  }
+
+  @Get(':filename')
+  async getFile(@Param('filename') filename: string, @Res() res: Response) {
+    const filePath = path.join(__dirname, '..', '..', 'uploads', filename);
+    if (fs.existsSync(filePath)) {
+      res.sendFile(filePath);
+    } else {
+      throw new BadRequestException('File not found');
+    }
+  }
+
+  catch(exception: BadRequestException, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse();
+    const status = exception.getStatus();
+    const message = exception.getResponse();
+
+    response.status(status).json({
+      statusCode: status,
+      message,
+    });
   }
 }
